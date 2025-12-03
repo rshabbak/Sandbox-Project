@@ -1,0 +1,407 @@
+clear all; close all; clc
+% Group 9 Sandbox Project 
+% Ryan Shabbak, Ian Van Der Linde, Trevor Holmgren
+% American Roullete Game With Statistcal Analysis/Hypothesis Testing
+
+rng('shuffle'); % Randomize the random-number generator
+balance = 100; % Starting chips for the player game
+
+fprintf('American Roulette\n'); % Print game banner
+fprintf('Starting balance: %d chips\n\n', balance); % Show initial balance
+
+% Main Game Loop
+while balance > 0 % Keep playing while player has chips
+    fprintf('Current balance: %d chips\n', balance); % Show current balance
+    % Main menu, menu() returns 0 if the dialog is closed.
+    betType = menu('Choose an option:', ...
+        'Bet: Straight Number (35:1)', ... % Option 1 – straight number
+        'Bet: Red / Black (1:1)', ... % Option 2 – color bet
+        'Bet: Even / Odd (1:1)', ... % Option 3 – parity bet
+        'Bet: Low (1–18) / High (19–36) (1:1)', ... % Option 4 – low/high bet
+        'Bet: Dozen (2:1)', ... % Option 5 – dozen bet
+        'Bet: Column (2:1)', ... % Option 6 – column bet
+        'Help / Rules', ... % Option 7 – show help
+        'Simulator (Stats & Hypothesis Test)', ... % Option 8 – open simulator menu
+        'Cash Out'); % Option 9 – exit game
+
+    if betType == 9 || betType == 0 % If user chooses Cash Out or closes window
+        break; % Exit main game loop
+    end
+
+    % Non-betting options
+    if betType == 7 % If Help/Rules selected
+        showHelp(); % Call help function
+        continue; % Return to top of game loop
+    elseif betType == 8 % If Simulator selected
+        simulator(); % Call simulator menu
+        continue; % Return to top of game loop
+    end
+
+    % Get wager (whole number and ≤ balance)
+    wager = promptWager(balance); % Ask player for bet size
+    if wager == 0, break; end % 0 wager means cash out and exit
+    % Get bet details (choice + human-readable label)
+    [choice, choiceLabel] = getBetChoice(betType); % Ask for bet specifics
+    fprintf('You bet %d chips on: %s\n', wager, choiceLabel); % Repeat bet to Command Window
+
+    % Spin the wheel: 0 to 36 and 00 encoded as 37
+    spin = randi([0 37]); % Generate random pocket (0–36, 37=00)
+    [resultLabel, color] = resultStrings(spin); % Convert pocket to label/color strings
+    fprintf('\n*** Spin Result: %s (%s) ***\n', resultLabel, color); % Show spin outcome
+
+    % Resolve outcome
+    [won, payout] = resolveBet(betType, choice, spin); % Determine win/lose and payout multiplier
+    if won % If bet won
+        profit  = wager * payout; % Payout
+        balance = balance + profit; % Add profit to balance
+        fprintf('WIN! Payout %dx → +%d chips\n\n', payout, profit); % Report win
+    else % If bet lost
+        balance = balance - wager; % Subtract wager from balance
+        fprintf('Lose. -%d chips\n\n', wager); % Report loss
+    end
+end
+
+fprintf('Game Over! Final balance: %d chips.\n', balance); % Final message after loop exits
+
+% Called Upon Functions
+
+function [rs, cs] = resultStrings(n)
+% Map the numeric outcomes to display string and color.
+    if n == 37 % If encoded 00
+        rs = '00'; cs = 'green'; % Show text "00" with green color
+    else % For all other pockets
+        rs = num2str(n); % Convert number to string
+        cs = wheelColor(n); % Determine color of that number
+    end
+end
+
+function s = wheelColor(n)
+% Return 'red', 'black', or 'green' for a given pocket.
+    if isGreen(n) % If pocket is 0 or 00
+        s = 'green'; % Color is green
+    elseif isRed(n) % Else if in red set
+        s = 'red'; % Color is red
+    else % Otherwise
+        s = 'black'; % Color is black
+    end
+end
+
+function tf = isGreen(n)
+% American wheel has 0 and 00 as green
+    tf = (n == 0 || n == 37); % True only for 0 or 37 (00)
+end
+
+function tf = isRed(n)
+% Standard red numbers on roulette.
+    reds = [1 3 5 7 9 12 14 16 18 19 21 23 25 27 30 32 34 36]; % Vector of red numbers
+    tf = ismember(n, reds); % True if n is in the red set
+end
+
+function amt = promptWager(maxAmt)
+% Ask for a whole number wager from 0 to max amount
+    while true % Loop until valid wager is entered
+        amt = input(sprintf('Enter wager (1–%d, or 0 to cash out): ', maxAmt)); % Prompt user
+        if isempty(amt) || ~isscalar(amt) || amt ~= floor(amt) || amt < 0
+            fprintf('Please enter a valid whole number.\n'); % Reject invalid input
+        elseif amt > maxAmt
+            fprintf('Cannot wager more than your balance.\n'); % Prevent over betting
+        else
+            return % Valid wager, exit function
+        end
+    end
+end
+
+function [choice, label] = getBetChoice(type)
+% Return internal numeric "choice" 
+    switch type % Choose based on bet type
+        case 1  % Straight number (0–36 or "00")
+            raw = input('Enter number (0–36 or 00): ', 's'); % Read as string for 00 option
+            raw = strtrim(raw); % Remove leading/trailing spaces
+            if strcmpi(raw, '00') % If user typed 00
+                choice = 37; label = 'Straight: 00'; % Encode as 37 and label accordingly
+            else
+                num = str2double(raw); % Convert string to number
+                while isnan(num) || num < 0 || num > 36 || num ~= floor(num)
+                    raw = input('Enter a valid number (0–36) or 00: ', 's'); % Re prompt
+                    raw = strtrim(raw); % Trim spaces
+                    if strcmpi(raw, '00'), num = 37; break; end % Handle 00 again
+                    num = str2double(raw); % Convert to double
+                end
+                choice = num; % Store numeric choice
+                if choice == 37  % If encoded 00
+                    label = 'Straight: 00'; % Label as 00
+                else
+                    label = sprintf('Straight: %d', choice); % Label as chosen number
+                end
+            end
+
+        case 2  % Red / Black
+            idx = menu('Choose color', 'Red', 'Black'); % Ask user for red or black
+            choice = idx; % Store 1 for red, 2 for black
+            opts = {'Red','Black'}; % Cell array of color labels
+            label = sprintf('Color: %s', opts{idx}); % Descriptive label string
+
+        case 3  % Even / Odd
+            idx = menu('Choose parity', 'Even', 'Odd'); % Ask for even or odd
+            choice = idx; % Store 1 for even, 2 for odd
+            opts = {'Even','Odd'}; % Cell array of parity labels
+            label = sprintf('Parity: %s', opts{idx}); % Build label
+
+        case 4  % Low / High
+            idx = menu('Choose range', 'Low (1–18)', 'High (19–36)'); % Ask low/high
+            choice = idx; % Store low/high as 1 or 2
+            opts = {'Low (1–18)','High (19–36)'}; % Cell array of range labels
+            label = sprintf('Range: %s', opts{idx}); % Build label
+
+        case 5  % Dozen
+            idx = menu('Choose dozen', '1–12', '13–24', '25–36'); % Ask which dozen
+            choice = idx; % Store dozen index (1–3)
+            opts = {'1–12','13–24','25–36'}; % Dozen label strings
+            label = sprintf('Dozen: %s', opts{idx}); % Build label
+
+        case 6  % Column
+            idx = menu('Choose column', ...
+                       '1st (1,4,7,...)', '2nd (2,5,8,...)', '3rd (3,6,9,...)'); % Ask column
+            choice = idx; % Store column index (1–3)
+            opts = {'Column 1','Column 2','Column 3'}; % Column label strings
+            label = opts{idx}; % Label is selected column text
+    end
+end
+
+function [won, payout] = resolveBet(type, pick, n)
+% Determine if a bet wins and return payout multiplier
+    won = false; payout = 0; % Default: not a win, zero payout
+    switch type % Decide logic by bet type
+        case 1  % Straight
+            won = (n == pick); payout = 35; % Win only if exact number hits
+
+        case 2  % Red / Black
+            if ~isGreen(n) % Greens are automatic losses
+                won = (pick == 1 && isRed(n)) || ...  % Win if picked red and n is red
+                      (pick == 2 && ~isRed(n)); % Or picked black and n is black
+            end
+            payout = 1; % 1:1 payout
+
+        case 3  % Even / Odd
+            if ~isGreen(n) % Greens are neither even nor odd
+                won = (pick == 1 && mod(n,2)==0) || ... % Win if picked even and n even
+                      (pick == 2 && mod(n,2)==1); % Or picked odd and n odd
+            end
+            payout = 1; % 1:1 payout
+
+        case 4  % Low / High
+            if ~isGreen(n) % Greens lose
+                won = (pick == 1 && n>=1  && n<=18) || ... % Low range
+                      (pick == 2 && n>=19 && n<=36); % High range
+            end
+            payout = 1; % 1:1 payout
+
+        case 5  % Dozen
+            if ~isGreen(n) % Greens not in any dozen
+                if     pick == 1, won = (n>=1  && n<=12); % First dozen
+                elseif pick == 2, won = (n>=13 && n<=24); % Second dozen
+                else,            won = (n>=25 && n<=36);  % Third dozen
+                end
+            end
+            payout = 2; % 2:1 payout
+
+        case 6  % Column
+            if ~isGreen(n) % Greens not in any column
+                col = mod(n-1,3)+1; % Map 1..36 to columns 1..3
+                won = (col == pick); % Win if column index matches choice
+            end
+            payout = 2; % 2:1 payout
+    end
+end
+
+function showHelp()
+% Display concise rules and payouts.
+    fprintf('\nHELP / RULES\n'); % Header
+    fprintf('Wheel: American, 38 pockets (0–36 and 00).\n'); % Wheel description
+    fprintf('Green = 0 or 00. Outside bets lose on green.\n'); % Green rule
+    fprintf('Payouts: Straight 35:1 | Even/Odd, Red/Black, Low/High 1:1 | Dozen/Column 2:1\n'); % Payouts
+    fprintf('Simulator can test fairness of roulettes using hypothesis testing.\n\n'); % Simulator note
+end
+
+function simulator()
+% Simulator menu: quick return-on-red OR statistical hypothesis test.
+    fprintf('\n Simulation Menu \n'); % Print simulator header
+    simChoice = menu('Choose simulator type:', ...
+        'Quick Bet Analysis: Red expected return', ... % Option 1 - Monte Carlo
+        'Casino inspector: compare two unknown wheels', ... % Option 2 – hypothesis test on A vs B
+        'Back to main game'); % Option 3 – exit simulator
+
+    if simChoice == 1 % If quick simulation is chosen
+        quickRedSim(); % Call helper for simple red simulation
+    elseif simChoice == 2 % If hypothesis test simulator chosen
+        inspectorSimulator(); % Call casino inspector simulator
+    else % If Back selected or dialog closed
+        fprintf('Returning to main menu.\n\n'); % Show message and return
+    end
+end
+
+function quickRedSim()
+% Quick Monte Carlo showing expected return when always betting Red.
+    fprintf('\n Quick Sim: Always Bet red \n'); % Header for quick simulation
+    N = input('Number of spins to simulate (e.g., 10000): '); % Ask for number of spins
+    if isempty(N) || ~isscalar(N) || N < 1 || N ~= floor(N) % Validate number of spins
+        fprintf('Cancelled.\n\n'); return; % Abort on invalid input
+    end
+    wins = 0; % Initialize number of winning spins
+    for k = 1:N % Loop over all simulated spins
+        s = randi([0 37]); % Random wheel outcome
+        wins = wins + (~isGreen(s) && isRed(s)); % Increment wins if spin is red
+    end
+    profit = wins - (N - wins); % +1 chip for each win, -1 for each loss
+    avgRet = profit / N; % Average return in chips per spin
+    fprintf('Bet Red for %d spins → Profit: %d, Avg/spin: %.4f chips\n', ...
+            N, profit, avgRet); % Print results
+    fprintf('(Theoretical house edge ≈ -5.26%%%% on American wheel.)\n\n'); % Reference info
+end
+
+function inspectorSimulator()
+% Casino inspector simulator:
+% Compare two wheels A and B (one randombly fair, one randomly biased) using hypothesis testing.
+% The code doesn't assume which one is which; it tries to detect the biased one.
+
+    fprintf('\n Casino Inspector Simulator \n'); % Header for inspector simulation
+
+    % -Get simulation parameters from user
+    nSpins = input('Spins per wheel (e.g., 100 or 1000): '); % Number of spins per wheel per experiment
+    if isempty(nSpins) || ~isscalar(nSpins) || nSpins < 1 || nSpins ~= floor(nSpins)
+        fprintf('Invalid number of spins. Cancelled.\n\n'); return; % Abort on bad input
+    end
+
+    nDays  = input('Number of experiments (e.g., 500 or 1000): '); % Number of repeated experiments
+    if isempty(nDays) || ~isscalar(nDays) || nDays < 1 || nDays ~= floor(nDays)
+        fprintf('Invalid number of experiments. Cancelled.\n\n'); return;  % Abort on bad input
+    end
+
+    % Define model of fair and biased wheels
+    pFair  = 18/38; % Probability of red on a fair American wheel
+    pBias  = 0.55;  % Probability of red on a biased wheel (chosen bias)
+    alpha  = 0.05;  % Significance level for hypothesis test
+
+    % Randomly decide which wheel (A or B) is fair for this run
+    if rand < 0.5 % With 50% probability
+        pA_true = pFair; % Wheel A is fair
+        pB_true = pBias; % Wheel B is biased
+        fairWheel = 'A'; % Label fair wheel as A
+    else
+        pA_true = pBias; % Wheel A is biased
+        pB_true = pFair; % Wheel B is fair
+        fairWheel = 'B'; % Label fair wheel as B
+    end
+
+    % Allocate arrays to store results for each experiment
+    redPropA    = zeros(nDays,1); % Proportion of reds for wheel A
+    redPropB    = zeros(nDays,1); % Proportion of reds for wheel B
+    pValA       = zeros(nDays,1); % p-values for wheel A tests
+    pValB       = zeros(nDays,1); % p-values for wheel B tests
+    chooseA     = false(nDays,1); % True if inspector picks A as more suspicious
+    chooseB     = false(nDays,1); % True if inspector picks B as more suspicious
+    detectionOK = false(nDays,1); % True if inspector correctly finds biased wheel
+
+    % Standard error under null hypothesis (wheel is fair with p = pFair)
+    se = sqrt(pFair * (1 - pFair) / nSpins); % Standard error for proportion under H0
+
+    % Run Monte Carlo across experiments
+    for d = 1:nDays % Loop over each simulated experiment
+        % Simulate wheel A outcomes
+        redsA = sum(rand(nSpins,1) < pA_true); % Count red outcomes from wheel A
+        redPropA(d) = redsA / nSpins; % Sample proportion for wheel A
+        zA = (redPropA(d) - pFair) / se; % z-statistic vs fair probability
+        PhiA = 0.5 * (1 + erf(zA / sqrt(2))); % Normal CDF using error function
+        pValA(d) = 1 - PhiA; % One-sided p-value for p > pFair
+
+        % Simulate wheel B outcomes
+        redsB = sum(rand(nSpins,1) < pB_true); % Count red outcomes from wheel B
+        redPropB(d) = redsB / nSpins; % Sample proportion for wheel B
+        zB = (redPropB(d) - pFair) / se; % z-statistic vs fair probability
+        PhiB = 0.5 * (1 + erf(zB / sqrt(2))); % Normal CDF for wheel B
+        pValB(d) = 1 - PhiB; % One-sided p-value for p > pFair
+
+        % Inspector decision: which wheel looks more suspicious?
+        if pValA(d) < pValB(d) % Smaller p-value = more evidence against fairness
+            chooseA(d) = true; % Inspector flags A as more suspicious
+        elseif pValB(d) < pValA(d)
+            chooseB(d) = true; % Inspector flags B as more suspicious
+        else
+            % If pValA == pValB then no choice; leave both false
+        end
+
+        % Check if inspector picked the truly biased wheel
+        if fairWheel == 'A' % If A is fair, then B is biased
+            detectionOK(d) = chooseB(d); % Correct only if B was chosen
+        else % If B is fair, then A is biased
+            detectionOK(d) = chooseA(d); % Correct only if A was chosen
+        end
+    end
+
+    % Summarize detection performance
+    detectionRate = mean(detectionOK); % Fraction of experiments with correct pick
+    fracChooseA   = mean(chooseA); % Fraction of experiments choosing A
+    fracChooseB   = mean(chooseB); % Fraction of experiments choosing B
+
+    fprintf('\nAfter %d experiments with %d spins per wheel:\n', nDays, nSpins); % Summary header
+    fprintf('  True fair wheel this run: %s\n', fairWheel); % Reveal which wheel was fair
+    fprintf('  Inspector chose Wheel A as more suspicious: %.1f%% of experiments\n', ...
+            100*fracChooseA); % Percent of times A was flagged
+    fprintf('  Inspector chose Wheel B as more suspicious: %.1f%% of experiments\n', ...
+            100*fracChooseB); % Percent of times B was flagged
+    fprintf('  Correctly identified biased wheel: %.1f%% of experiments\n', ...
+            100*detectionRate); % Overall detection success rate
+    fprintf('  Significance level: alpha = %.2f\n', alpha); % Show alpha
+
+    % Show one example experiment for interpretation
+    ex = 1; % Use the first experiment as example
+    redsA_example = round(redPropA(ex) * nSpins); % Convert wheel A proportion to count
+    redsB_example = round(redPropB(ex) * nSpins); % Convert wheel B proportion to count
+
+    fprintf('\nExample experiment (Experiment 1):\n'); % Example header
+    fprintf('  Wheel A: %d reds out of %d (p-hat = %.3f), p-value = %.4f\n', ...
+            redsA_example, nSpins, redPropA(ex), pValA(ex)); % Wheel A example details
+    fprintf('  Wheel B: %d reds out of %d (p-hat = %.3f), p-value = %.4f\n', ...
+            redsB_example, nSpins, redPropB(ex), pValB(ex)); % Wheel B example details
+
+    if pValA(ex) < pValB(ex) % Compare example p-values
+        flaggedExample = 'A'; % A looks more suspicious
+    elseif pValB(ex) < pValA(ex)
+        flaggedExample = 'B'; % B looks more suspicious
+    else
+        flaggedExample = 'none (tie)'; % Equal p-values edge case
+    end
+
+    fprintf('  Inspector would flag Wheel %s as more suspicious in this example.\n', ...
+            flaggedExample); % Report example decision
+    fprintf('  True fair wheel for this run is Wheel %s.\n', fairWheel); % Reveal truth
+
+    % Plot distributions of proportions and p-values for A and B
+    figure; % Open new figure window
+
+    subplot(2,2,1); % Top-left subplot for wheel A proportions
+    histogram(redPropA); % Histogram of red proportions (A)
+    xlabel('Proportion red (Wheel A)'); % X-axis label
+    ylabel('Number of experiments'); % Y-axis label
+    title('Wheel A: proportion of red'); % Plot title
+
+    subplot(2,2,2); % Top-right subplot for wheel B proportions
+    histogram(redPropB); % Histogram of red proportions (B)
+    xlabel('Proportion red (Wheel B)'); % X-axis label
+    ylabel('Number of experiments'); % Y-axis label
+    title('Wheel B: proportion of red'); % Plot title
+
+    subplot(2,2,3); % Bottom-left subplot for wheel A p-values
+    histogram(pValA); % Histogram of p-values (A)
+    xlabel('p-value (Wheel A)'); % X-axis label
+    ylabel('Number of experiments'); % Y-axis label
+    title('p-values for Wheel A'); % Plot title
+
+    subplot(2,2,4); % Bottom-right subplot for wheel B p-values
+    histogram(pValB); % Histogram of p-values (B)
+    xlabel('p-value (Wheel B)'); % X-axis label
+    ylabel('Number of experiments'); % Y-axis label
+    title('p-values for Wheel B'); % Plot title
+
+    fprintf('\nPlots generated: proportions and p-values for Wheel A vs Wheel B.\n\n'); % Notify user
+end
